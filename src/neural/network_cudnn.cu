@@ -28,7 +28,7 @@
 #include <cudnn.h>
 #include <algorithm>
 
-//#define DEBUG_RAW_NPS
+#define DEBUG_RAW_NPS
 
 namespace lczero {
 namespace {
@@ -132,7 +132,7 @@ class ConvLayer : public BaseLayer<DataType> {
   using BaseLayer<DataType>::GetW;
 
  public:
-  ConvLayer(BaseLayer<DataType> *ip, int C, int H, int W, int size, int Cin,
+  ConvLayer(BaseLayer<DataType> *ip, cudnnHandle_t cudnn, int C, int H, int W, int size, int Cin,
             bool relu = false, bool bias = false);
   ~ConvLayer();
   void LoadWeights(float *pfilter, float *pBias, void *scratch);
@@ -481,7 +481,7 @@ void SoftMaxLayer<DataType>::Eval(int N, DataType *output,
 }
 
 template <typename DataType>
-ConvLayer<DataType>::ConvLayer(BaseLayer<DataType> *ip, int C, int H, int W,
+ConvLayer<DataType>::ConvLayer(BaseLayer<DataType> *ip, cudnnHandle_t cudnn, int C, int H, int W,
                                int filter, int Cin, bool relu, bool bias)
     : BaseLayer<DataType>(C, H, W, ip),
       filter_size_(filter),
@@ -526,13 +526,6 @@ ConvLayer<DataType>::ConvLayer(BaseLayer<DataType> *ip, int C, int H, int W,
     reportCUDNNErrors(
         cudnnSetConvolutionMathType(conv_desc_, CUDNN_TENSOR_OP_MATH));
 
-  // TODO: dynamic selection of algorithm!
-  if ((C > 32) && (!fp16)) {
-    convAlgo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED;
-  } else {
-    convAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
-  }
-
   if (use_relu_) {
     cudnnSetActivationDescriptor(activation_, CUDNN_ACTIVATION_RELU,
                                  CUDNN_NOT_PROPAGATE_NAN, 0.0);
@@ -540,6 +533,32 @@ ConvLayer<DataType>::ConvLayer(BaseLayer<DataType> *ip, int C, int H, int W,
     cudnnSetActivationDescriptor(activation_, CUDNN_ACTIVATION_IDENTITY,
                                  CUDNN_NOT_PROPAGATE_NAN, 0.0);
   }
+
+  // tune convolution algorithm
+  // batch size varies, so pick a sensible average value
+  int N = 180;
+
+  reportCUDNNErrors(cudnnSetTensor4dDescriptor(
+      out_tensor_desc_, fp16 ? CUDNN_TENSOR_NHWC : CUDNN_TENSOR_NCHW,
+      fp16 ? CUDNN_DATA_HALF : CUDNN_DATA_FLOAT, N, C, H, W));
+
+  reportCUDNNErrors(cudnnSetTensor4dDescriptor(
+      in_tensor_desc_, fp16 ? CUDNN_TENSOR_NHWC : CUDNN_TENSOR_NCHW,
+      fp16 ? CUDNN_DATA_HALF : CUDNN_DATA_FLOAT, N, c_input_, H, W));
+
+  cudnnConvolutionFwdAlgoPerf_t fwd_perf;
+  int ret_count;
+
+  reportCUDNNErrors(
+      cudnnFindConvolutionForwardAlgorithm(cudnn, in_tensor_desc_, filter_desc_, conv_desc_,
+                                           out_tensor_desc_, 1, &ret_count, &fwd_perf));
+  reportCUDNNErrors(
+      cudnnSetConvolutionMathType(conv_desc_, fwd_perf.mathType));
+  convAlgo = fwd_perf.algo;
+
+#ifdef DEBUG_RAW_NPS
+  printf("Algorithm[%u]: Execution time: %f / Workspace taken (bytes): %u\n", fwd_perf.algo, fwd_perf.time, fwd_perf.memory);
+#endif
 }
 
 template <>
@@ -1040,6 +1059,7 @@ class CudnnNetwork : public Network {
     // Query expected scratch space from cudnn.
     reportCUDNNErrors(cudnnGetConvolutionForwardWorkspaceSize(
         cudnn_, xDesc, wDesc, convDesc, xDesc, convAlgo, &scratch_size_));
+    scratch_size_ *= 4;
 
     // have some minumum as we also use this for transforming weights
     const int maxWeightSize = 128 * 1024 * 1024;
@@ -1055,7 +1075,7 @@ class CudnnNetwork : public Network {
     // input
     {
       auto inputConv = std::make_unique<ConvLayer<DataType>>(
-          nullptr, numFilters, 8, 8, 3, numInputPlanes, true, true);
+          nullptr, cudnn_, numFilters, 8, 8, 3, numInputPlanes, true, true);
       inputConv->LoadWeights(&weights.input.weights[0],
                              &weights.input.biases[0], scratch_mem_);
       network_.emplace_back(std::move(inputConv));
@@ -1064,14 +1084,14 @@ class CudnnNetwork : public Network {
     // residual block
     for (int block = 0; block < weights.residual.size(); block++) {
       auto conv1 = std::make_unique<ConvLayer<DataType>>(
-          getLastLayer(), numFilters, 8, 8, 3, numFilters, true, true);
+          getLastLayer(), cudnn_, numFilters, 8, 8, 3, numFilters, true, true);
       conv1->LoadWeights(&weights.residual[block].conv1.weights[0],
                          &weights.residual[block].conv1.biases[0],
                          scratch_mem_);
       network_.emplace_back(std::move(conv1));
 
       auto conv2 = std::make_unique<ConvLayer<DataType>>(
-          getLastLayer(), numFilters, 8, 8, 3, numFilters, true, true);
+          getLastLayer(), cudnn_, numFilters, 8, 8, 3, numFilters, true, true);
       conv2->LoadWeights(&weights.residual[block].conv2.weights[0],
                          &weights.residual[block].conv2.biases[0],
                          scratch_mem_);
@@ -1083,7 +1103,7 @@ class CudnnNetwork : public Network {
     // policy head
     {
       auto convPol = std::make_unique<ConvLayer<DataType>>(
-          resi_last_, weights.policy.bn_means.size(), 8, 8, 1, numFilters);
+          resi_last_, cudnn_, weights.policy.bn_means.size(), 8, 8, 1, numFilters);
       convPol->LoadWeights(&weights.policy.weights[0], nullptr, scratch_mem_);
       network_.emplace_back(std::move(convPol));
 
@@ -1107,7 +1127,7 @@ class CudnnNetwork : public Network {
     // Value head
     {
       auto convVal = std::make_unique<ConvLayer<DataType>>(
-          resi_last_, weights.value.bn_means.size(), 8, 8, 1, numFilters);
+          resi_last_, cudnn_, weights.value.bn_means.size(), 8, 8, 1, numFilters);
       convVal->LoadWeights(&weights.value.weights[0], nullptr, scratch_mem_);
       network_.emplace_back(std::move(convVal));
 
@@ -1230,7 +1250,7 @@ class CudnnNetwork : public Network {
     reportCUDAErrors(cudaDeviceSynchronize());
 
 #ifdef DEBUG_RAW_NPS
-    const int reportingCalls = 100;
+    const int reportingCalls = 1;
     static int numCalls = 0;
     static int sumBatchSize = 0;
     static double totalTime = 0;
