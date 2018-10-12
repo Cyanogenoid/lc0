@@ -46,9 +46,10 @@ struct V3TrainingData {
   uint8_t side_to_move;
   uint8_t rule50_count;
   uint8_t move_count;
+  uint8_t legal[1858];
   int8_t result;
 } PACKED_STRUCT;
-static_assert(sizeof(V3TrainingData) == 8276, "Wrong struct size");
+static_assert(sizeof(V3TrainingData) == 8276 + 1858, "Wrong struct size");
 
 #pragma pack(pop)
 
