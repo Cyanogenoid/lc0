@@ -92,7 +92,7 @@ class NetworkComputation {
   // Returns how many times AddInput() was called.
   virtual int GetBatchSize() const = 0;
   // Returns Q value of @sample.
-  virtual float GetQVal(int sample) const = 0;
+  virtual float GetQVal(int sample, int wdl) const = 0;
   // Returns P value @move_id of @sample.
   virtual float GetPVal(int sample, int move_id) const = 0;
   virtual ~NetworkComputation() {}

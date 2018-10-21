@@ -46,8 +46,8 @@ class MuxingComputation : public NetworkComputation {
 
   int GetBatchSize() const override { return planes_.size(); }
 
-  float GetQVal(int sample) const override {
-    return parent_->GetQVal(sample + idx_in_parent_);
+  float GetQVal(int sample, int wdl) const override {
+    return parent_->GetQVal(sample + idx_in_parent_, wdl);
   }
 
   float GetPVal(int sample, int move_id) const override {

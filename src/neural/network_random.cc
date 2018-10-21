@@ -54,7 +54,7 @@ class RandomNetworkComputation : public NetworkComputation {
   }
 
   int GetBatchSize() const override { return inputs_.size(); }
-  float GetQVal(int sample) const override {
+  float GetQVal(int sample, int wdl) const override {
     return (int(inputs_[sample] % 200000) - 100000) / 100000.0;
   }
   float GetPVal(int sample, int move_id) const override {

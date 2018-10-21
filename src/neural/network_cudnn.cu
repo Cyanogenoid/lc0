@@ -949,8 +949,8 @@ class CudnnNetworkComputation : public NetworkComputation {
 
   int GetBatchSize() const override { return batch_size_; }
 
-  float GetQVal(int sample) const override {
-    return inputs_outputs_->op_value_mem_[sample];
+  float GetQVal(int sample, int wdl) const override {
+    return inputs_outputs_->op_value_mem_[sample * 3 + wdl];
   }
   float GetPVal(int sample, int move_id) const override {
     return inputs_outputs_->op_policy_mem_[sample * kNumOutputPolicy + move_id];
@@ -1130,11 +1130,15 @@ class CudnnNetwork : public Network {
                           scratch_mem_);
       network_.emplace_back(std::move(FCVal1));
 
-      auto FCVal2 = std::make_unique<FCLayer<DataType>>(getLastLayer(), 1, 1, 1,
-                                                        false, true, true);
+      auto FCVal2 = std::make_unique<FCLayer<DataType>>(getLastLayer(), 3, 1, 1,
+                                                        false, true);
       FCVal2->LoadWeights(&weights.ip2_val_w[0], &weights.ip2_val_b[0],
                           scratch_mem_);
       network_.emplace_back(std::move(FCVal2));
+
+      auto softmaxVal =
+          std::make_unique<SoftMaxLayer<DataType>>(getLastLayer());
+      network_.emplace_back(std::move(softmaxVal));
     }
     value_out_ = getLastLayer();
 

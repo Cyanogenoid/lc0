@@ -118,7 +118,7 @@ class OpenCLComputation : public NetworkComputation {
   int GetBatchSize() const override { return static_cast<int>(planes_.size()); }
 
   // Returns Q value of @sample.
-  float GetQVal(int sample) const override { return q_values_[sample]; }
+  float GetQVal(int sample, int wdl) const override { return q_values_[sample]; }
 
   // Returns P value @move_id of @sample.
   float GetPVal(int sample, int move_id) const override {

@@ -63,8 +63,8 @@ void SingleThreadBatchingNetworkComputation::ComputeBlocking() {
     network_->parent_computation_->ComputeBlocking();
 }
 
-float SingleThreadBatchingNetworkComputation::GetQVal(int sample) const {
-  return network_->parent_computation_->GetQVal(sample - start_idx_);
+float SingleThreadBatchingNetworkComputation::GetQVal(int sample, int wdl) const {
+  return network_->parent_computation_->GetQVal(sample - start_idx_, wdl);
 }
 
 float SingleThreadBatchingNetworkComputation::GetPVal(int sample,

@@ -35,7 +35,9 @@ namespace lczero {
 struct CachedNNRequest {
   CachedNNRequest(size_t size) : p(size) {}
   typedef std::pair<uint16_t, float> IdxAndProb;
-  float q;
+  float w;
+  float d;
+  float l;
   // TODO(mooskagh) Don't really need index if using perfect hash.
   SmallArray<IdxAndProb> p;
 };
@@ -70,7 +72,7 @@ class CachingComputation {
   // Do the computation.
   void ComputeBlocking();
   // Returns Q value of @sample.
-  float GetQVal(int sample) const;
+  float GetQVal(int sample, int wdl) const;
   // Returns P value @move_id of @sample.
   float GetPVal(int sample, int move_id) const;
   // Pops last input from the computation. Only allowed for inputs which were

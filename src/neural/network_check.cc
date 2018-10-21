@@ -89,8 +89,8 @@ class CheckComputation : public NetworkComputation {
     return static_cast<int>(work_comp_->GetBatchSize());
   }
 
-  float GetQVal(int sample) const override {
-    return work_comp_->GetQVal(sample);
+  float GetQVal(int sample, int wdl) const override {
+    return work_comp_->GetQVal(sample, wdl);
   }
 
   float GetPVal(int sample, int move_id) const override {
@@ -105,8 +105,8 @@ class CheckComputation : public NetworkComputation {
     bool valueAlmostEqual = true;
     int size = GetBatchSize();
     for (int i = 0; i < size && valueAlmostEqual; i++) {
-      float v1 = work_comp_->GetQVal(i);
-      float v2 = check_comp_->GetQVal(i);
+      float v1 = work_comp_->GetQVal(i, 0);
+      float v2 = check_comp_->GetQVal(i, 0);
       valueAlmostEqual &= IsAlmostEqual(v1, v2);
     }
 
@@ -151,8 +151,8 @@ class CheckComputation : public NetworkComputation {
 
     int size = GetBatchSize();
     for (int i = 0; i < size; i++) {
-      float qv1 = work_comp_->GetQVal(i);
-      float qv2 = check_comp_->GetQVal(i);
+      float qv1 = work_comp_->GetQVal(i, 0);
+      float qv2 = check_comp_->GetQVal(i, 0);
       histogram.Add(qv2 - qv1);
       for (int j = 0; j < kNumOutputPolicies; j++) {
         float pv1 = work_comp_->GetPVal(i, j);
@@ -201,8 +201,8 @@ class CheckComputation : public NetworkComputation {
     MaximumError value_error;
     int size = GetBatchSize();
     for (int i = 0; i < size; i++) {
-      float v1 = work_comp_->GetQVal(i);
-      float v2 = check_comp_->GetQVal(i);
+      float v1 = work_comp_->GetQVal(i, 0);
+      float v2 = check_comp_->GetQVal(i, 0);
       value_error.Add(v1, v2);
     }
 

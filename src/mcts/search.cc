@@ -204,7 +204,7 @@ void Search::SendMovesStats() const {
       v = edge.node()->GetQ();
     } else {
       NNCacheLock nneval = GetCachedFirstPlyResult(edge);
-      if (nneval) v = -nneval->q;
+      if (nneval) v = -(nneval->w - nneval->l);
     }
     if (v) {
       oss << std::setw(7) << std::setprecision(4) << *v;
@@ -1018,7 +1018,10 @@ void SearchWorker::FetchSingleNodeResult(NodeToProcess* node_to_process,
   }
   // For NN results, we need to populate policy as well as value.
   // First the value...
-  node_to_process->v = -computation_->GetQVal(idx_in_computation);
+  auto w = -computation_->GetQVal(idx_in_computation, 0);
+  auto d = -computation_->GetQVal(idx_in_computation, 1);
+  auto l = -computation_->GetQVal(idx_in_computation, 2);
+  node_to_process->v = w - l;
   // ...and secondly, the policy data.
   float total = 0.0;
   for (auto edge : node->Edges()) {
