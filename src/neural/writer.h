@@ -27,6 +27,7 @@
 
 #include <zlib.h>
 #include <fstream>
+#include "proto/chunk.pb.h"
 #include "utils/cppattributes.h"
 
 #pragma once
@@ -63,7 +64,7 @@ class TrainingDataWriter {
   }
 
   // Writes a chunk.
-  void WriteChunk(const V3TrainingData& data);
+  void WriteChunk(const pblczero::Chunk& chunk);
 
   // Flushes file and closes it.
   void Finalize();

@@ -80,6 +80,8 @@ endif
 
 files += gen.process('libs/lczero-common/proto/net.proto',
   preserve_path_from : meson.current_source_dir() + '/libs/lczero-common/')
+files += gen.process('libs/lczero-common/proto/chunk.proto',
+  preserve_path_from : meson.current_source_dir() + '/libs/lczero-common/')
 
 #############################################################################
 ## Main files

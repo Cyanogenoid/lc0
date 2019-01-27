@@ -33,6 +33,7 @@
 #include "utils/exception.h"
 #include "utils/filesystem.h"
 #include "utils/random.h"
+#include "proto/chunk.pb.h"
 
 namespace lczero {
 
@@ -48,13 +49,16 @@ TrainingDataWriter::TrainingDataWriter(int game_id) {
 
   filename_ = oss.str();
   fout_ = gzopen(filename_.c_str(), "wb");
+  //fout_ = std::ofstream();
   if (!fout_) throw Exception("Cannot create gzip file " + filename_);
 }
 
-void TrainingDataWriter::WriteChunk(const V3TrainingData& data) {
+void TrainingDataWriter::WriteChunk(const pblczero::Chunk& chunk) {
+  std::string data;
+  chunk.SerializeToString(&data);
   auto bytes_written =
-      gzwrite(fout_, reinterpret_cast<const char*>(&data), sizeof(data));
-  if (bytes_written != sizeof(data)) {
+      gzwrite(fout_, data.c_str(), data.size());
+  if (bytes_written != data.size()) {
     throw Exception("Unable to write into " + filename_);
   }
 }

@@ -38,6 +38,8 @@
 #include "neural/network.h"
 #include "utils/exception.h"
 #include "utils/hashcat.h"
+#include "proto/chunk.pb.h"
+#include "proto/net.pb.h"
 
 namespace lczero {
 
@@ -297,53 +299,54 @@ uint64_t ReverseBitsInBytes(uint64_t v) {
 }
 }  // namespace
 
-V3TrainingData Node::GetV3TrainingData(
-    GameResult game_result, const PositionHistory& history,
+void Node::AddV4TrainingData(
+    pblczero::Game* game, GameResult game_result, const PositionHistory& history,
     FillEmptyHistory fill_empty_history) const {
-  V3TrainingData result;
+  // game should be passed in
 
-  // Set version.
-  result.version = 3;
+  // TODO training data version? only has field for engine version
 
   // Populate probabilities.
   float total_n = static_cast<float>(GetChildrenVisits());
   // Prevent garbage/invalid training data from being uploaded to server.
   if (total_n <= 0.0f) throw Exception("Search generated invalid data!");
-  std::memset(result.probabilities, 0, sizeof(result.probabilities));
+  pblczero::Policy* policy = game->add_policy();
   for (const auto& child : Edges()) {
-    result.probabilities[child.edge()->GetMove().as_nn_index()] =
-        child.GetN() / total_n;
+    // TODO might need some static casts
+    policy->add_index((child.edge()->GetMove().as_nn_index()));
+    policy->add_prior(child.GetN() / total_n);
   }
 
   // Populate planes.
+  pblczero::State* state = game->add_state();
   InputPlanes planes = EncodePositionForNN(history, 8, fill_empty_history);
-  int plane_idx = 0;
-  for (auto& plane : result.planes) {
-    plane = ReverseBitsInBytes(planes[plane_idx++].mask);
+  int kAuxPlaneBase = 104;  // TODO retrieve this from encoder.cc
+  for (size_t i = 0; i < kAuxPlaneBase; i++) {
+    state->add_plane(ReverseBitsInBytes(planes[i].mask));
   }
 
   const auto& position = history.Last();
   // Populate castlings.
-  result.castling_us_ooo = position.CanCastle(Position::WE_CAN_OOO) ? 1 : 0;
-  result.castling_us_oo = position.CanCastle(Position::WE_CAN_OO) ? 1 : 0;
-  result.castling_them_ooo = position.CanCastle(Position::THEY_CAN_OOO) ? 1 : 0;
-  result.castling_them_oo = position.CanCastle(Position::THEY_CAN_OO) ? 1 : 0;
+  state->set_us_ooo(position.CanCastle(Position::WE_CAN_OOO) ? 1 : 0);
+  state->set_us_oo(position.CanCastle(Position::WE_CAN_OO) ? 1 : 0);
+  state->set_them_ooo(position.CanCastle(Position::THEY_CAN_OOO) ? 1 : 0);
+  state->set_them_oo(position.CanCastle(Position::THEY_CAN_OO) ? 1 : 0);
 
   // Other params.
-  result.side_to_move = position.IsBlackToMove() ? 1 : 0;
-  result.move_count = 0;
-  result.rule50_count = position.GetNoCaptureNoPawnPly();
+  state->set_side_to_move(position.IsBlackToMove() ? 1 : 0);
+//  state->set_move_count(position.IsBlackToMove() ? 1 : 0);  add this back in?
+  state->set_rule_50(position.GetNoCaptureNoPawnPly());
+
+  // TODO value
 
   // Game result.
   if (game_result == GameResult::WHITE_WON) {
-    result.result = position.IsBlackToMove() ? -1 : 1;
+    game->set_result(pblczero::Game_Result_WHITE); // TODO Game::Winner instead of result?
   } else if (game_result == GameResult::BLACK_WON) {
-    result.result = position.IsBlackToMove() ? 1 : -1;
+    game->set_result(pblczero::Game_Result_BLACK);
   } else {
-    result.result = 0;
+    game->set_result(pblczero::Game_Result_DRAW);
   }
-
-  return result;
 }
 
 /////////////////////////////////////////////////////////////////////////

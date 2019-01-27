@@ -33,6 +33,7 @@
 #include "neural/cache.h"
 #include "neural/network.h"
 #include "utils/optionsparser.h"
+#include "proto/chunk.pb.h"
 
 namespace lczero {
 
@@ -76,7 +77,7 @@ class SelfPlayGame {
   void Abort();
 
   // Writes training data to a file.
-  void WriteTrainingData(TrainingDataWriter* writer) const;
+  void WriteTrainingData(TrainingDataWriter* writer);
 
   GameResult GetGameResult() const { return game_result_; }
   std::vector<Move> GetMoves() const;
@@ -102,7 +103,7 @@ class SelfPlayGame {
   std::mutex mutex_;
 
   // Training data to send.
-  std::vector<V3TrainingData> training_data_;
+  pblczero::Chunk training_data_;
 };
 
 }  // namespace lczero

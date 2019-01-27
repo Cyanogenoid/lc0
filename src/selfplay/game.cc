@@ -29,6 +29,7 @@
 #include <algorithm>
 
 #include "neural/writer.h"
+#include "proto/chunk.pb.h"
 
 namespace lczero {
 
@@ -67,6 +68,8 @@ void SelfPlayGame::Play(int white_threads, int black_threads, bool training,
                         bool enable_resign) {
   bool blacks_move = false;
 
+  pblczero::Game* game = training_data_.add_game();
+
   // Do moves while not end of the game. (And while not abort_)
   while (!abort_) {
     game_result_ = tree_[0]->GetPositionHistory().ComputeGameResult();
@@ -100,9 +103,9 @@ void SelfPlayGame::Play(int white_threads, int black_threads, bool training,
 
     if (training) {
       // Append training data. The GameResult is later overwritten.
-      training_data_.push_back(tree_[idx]->GetCurrentHead()->GetV3TrainingData(
-          GameResult::UNDECIDED, tree_[idx]->GetPositionHistory(),
-          search_->GetParams().GetHistoryFill()));
+      tree_[idx]->GetCurrentHead()->AddV4TrainingData(
+          game, GameResult::UNDECIDED, tree_[idx]->GetPositionHistory(),
+          search_->GetParams().GetHistoryFill());
     }
 
     float eval = search_->GetBestEval();
@@ -153,21 +156,16 @@ void SelfPlayGame::Abort() {
   if (search_) search_->Abort();
 }
 
-void SelfPlayGame::WriteTrainingData(TrainingDataWriter* writer) const {
-  assert(!training_data_.empty());
-  bool black_to_move =
-      tree_[0]->GetPositionHistory().Starting().IsBlackToMove();
-  for (auto chunk : training_data_) {
-    if (game_result_ == GameResult::WHITE_WON) {
-      chunk.result = black_to_move ? -1 : 1;
-    } else if (game_result_ == GameResult::BLACK_WON) {
-      chunk.result = black_to_move ? 1 : -1;
-    } else {
-      chunk.result = 0;
-    }
-    writer->WriteChunk(chunk);
-    black_to_move = !black_to_move;
+void SelfPlayGame::WriteTrainingData(TrainingDataWriter* writer) {
+  pblczero::Game* game = training_data_.mutable_game(0);  // assuming 1 game per chunk
+  if (game_result_ == GameResult::WHITE_WON) {
+    game->set_result(pblczero::Game_Result_WHITE);
+  } else if (game_result_ == GameResult::BLACK_WON) {
+    game->set_result(pblczero::Game_Result_BLACK);
+  } else {
+    game->set_result(pblczero::Game_Result_DRAW);
   }
+  writer->WriteChunk(training_data_);
 }
 
 }  // namespace lczero

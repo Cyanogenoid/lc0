@@ -38,6 +38,7 @@
 #include "neural/encoder.h"
 #include "neural/writer.h"
 #include "utils/mutex.h"
+#include "proto/chunk.pb.h"
 
 namespace lczero {
 
@@ -204,7 +205,7 @@ class Node {
   // in depth parameter, and returns true if it was indeed updated.
   bool UpdateFullDepth(uint16_t* depth);
 
-  V3TrainingData GetV3TrainingData(GameResult result,
+  void AddV4TrainingData(pblczero::Game* game, GameResult result,
                                    const PositionHistory& history,
                                    FillEmptyHistory fill_empty_history) const;
 
