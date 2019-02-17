@@ -103,8 +103,8 @@ void SelfPlayGame::Play(int white_threads, int black_threads, bool training,
 
     if (training) {
       // Append training data. The GameResult is later overwritten.
-      tree_[idx]->GetCurrentHead()->AddV4TrainingData(
-          game, GameResult::UNDECIDED, tree_[idx]->GetPositionHistory(),
+      tree_[idx]->GetCurrentHead()->AddV5TrainingData(
+          game, tree_[idx]->GetPositionHistory(),
           search_->GetParams().GetHistoryFill());
     }
 

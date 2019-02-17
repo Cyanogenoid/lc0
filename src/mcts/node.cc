@@ -289,21 +289,9 @@ void Node::ReleaseChildrenExceptOne(Node* node_to_save) {
   child_ = std::move(saved_node);
 }
 
-namespace {
-// Reverse bits in every byte of a number
-uint64_t ReverseBitsInBytes(uint64_t v) {
-  v = ((v >> 1) & 0x5555555555555555ull) | ((v & 0x5555555555555555ull) << 1);
-  v = ((v >> 2) & 0x3333333333333333ull) | ((v & 0x3333333333333333ull) << 2);
-  v = ((v >> 4) & 0x0F0F0F0F0F0F0F0Full) | ((v & 0x0F0F0F0F0F0F0F0Full) << 4);
-  return v;
-}
-}  // namespace
-
-void Node::AddV4TrainingData(
-    pblczero::Game* game, GameResult game_result, const PositionHistory& history,
+void Node::AddV5TrainingData(
+    pblczero::Game* game, const PositionHistory& history,
     FillEmptyHistory fill_empty_history) const {
-  // game should be passed in
-
   // TODO training data version? only has field for engine version
 
   // Populate probabilities.
@@ -312,20 +300,35 @@ void Node::AddV4TrainingData(
   if (total_n <= 0.0f) throw Exception("Search generated invalid data!");
   pblczero::Policy* policy = game->add_policy();
   for (const auto& child : Edges()) {
-    // TODO might need some static casts
-    policy->add_index((child.edge()->GetMove().as_nn_index()));
+    policy->add_index(child.edge()->GetMove().as_nn_index());
     policy->add_prior(child.GetN() / total_n);
   }
 
-  // Populate planes.
-  pblczero::State* state = game->add_state();
-  InputPlanes planes = EncodePositionForNN(history, 8, fill_empty_history);
-  int kAuxPlaneBase = 104;  // TODO retrieve this from encoder.cc
-  for (size_t i = 0; i < kAuxPlaneBase; i++) {
-    state->add_plane(ReverseBitsInBytes(planes[i].mask));
-  }
-
   const auto& position = history.Last();
+  const auto& board = !position.IsBlackToMove() ? position.GetBoard() : position.GetThemBoard();
+  pblczero::State* state = game->add_state();
+
+  // Populate planes.
+  state->set_our_pawns((board.ours() & board.pawns()).as_int());
+  state->set_our_knights((board.our_knights()).as_int());
+  state->set_our_bishops((board.ours() & board.bishops()).as_int());
+  state->set_our_rooks((board.ours() & board.rooks()).as_int());
+  state->set_our_queens((board.ours() & board.queens()).as_int());
+  state->set_our_king((board.our_king()).as_int());
+
+  state->set_their_pawns((board.theirs() & board.pawns()).as_int());
+  state->set_their_knights((board.their_knights()).as_int());
+  state->set_their_bishops((board.theirs() & board.bishops()).as_int());
+  state->set_their_rooks((board.theirs() & board.rooks()).as_int());
+  state->set_their_queens((board.theirs() & board.queens()).as_int());
+  state->set_their_king((board.their_king()).as_int());
+
+  int repetitions = position.GetRepetitions();
+  if (repetitions > 1) {
+      repetitions = 1;
+  }
+  state->set_repetitions(repetitions);
+
   // Populate castlings.
   state->set_us_ooo(position.CanCastle(Position::WE_CAN_OOO) ? 1 : 0);
   state->set_us_oo(position.CanCastle(Position::WE_CAN_OO) ? 1 : 0);
@@ -339,14 +342,7 @@ void Node::AddV4TrainingData(
 
   // TODO value
 
-  // Game result.
-  if (game_result == GameResult::WHITE_WON) {
-    game->set_result(pblczero::Game_Result_WHITE); // TODO Game::Winner instead of result?
-  } else if (game_result == GameResult::BLACK_WON) {
-    game->set_result(pblczero::Game_Result_BLACK);
-  } else {
-    game->set_result(pblczero::Game_Result_DRAW);
-  }
+  // Game result will be set in WriteTrainingData.
 }
 
 /////////////////////////////////////////////////////////////////////////
