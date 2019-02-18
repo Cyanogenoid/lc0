@@ -305,23 +305,47 @@ void Node::AddV5TrainingData(
   }
 
   const auto& position = history.Last();
+  // Always store board from white's perspective.
   const auto& board = !position.IsBlackToMove() ? position.GetBoard() : position.GetThemBoard();
   pblczero::State* state = game->add_state();
 
   // Populate planes.
-  state->set_our_pawns((board.ours() & board.pawns()).as_int());
-  state->set_our_knights((board.our_knights()).as_int());
-  state->set_our_bishops((board.ours() & board.bishops()).as_int());
-  state->set_our_rooks((board.ours() & board.rooks()).as_int());
-  state->set_our_queens((board.ours() & board.queens()).as_int());
-  state->set_our_king((board.our_king()).as_int());
-
-  state->set_their_pawns((board.theirs() & board.pawns()).as_int());
-  state->set_their_knights((board.their_knights()).as_int());
-  state->set_their_bishops((board.theirs() & board.bishops()).as_int());
-  state->set_their_rooks((board.theirs() & board.rooks()).as_int());
-  state->set_their_queens((board.theirs() & board.queens()).as_int());
-  state->set_their_king((board.their_king()).as_int());
+  for (auto bit : IterateBits((board.ours() & board.pawns()).as_int())) {
+      state->add_white_pawns(bit);
+  }
+  for (auto bit : IterateBits((board.our_knights()).as_int())) {
+      state->add_white_knights(bit);
+  }
+  for (auto bit : IterateBits((board.ours() & board.bishops()).as_int())) {
+      state->add_white_bishops(bit);
+  }
+  for (auto bit : IterateBits((board.ours() & board.rooks()).as_int())) {
+      state->add_white_rooks(bit);
+  }
+  for (auto bit : IterateBits((board.ours() & board.queens()).as_int())) {
+      state->add_white_queens(bit);
+  }
+  for (auto bit : IterateBits((board.our_king()).as_int())) {
+      state->set_white_king(bit);
+  }
+  for (auto bit : IterateBits((board.theirs() & board.pawns()).as_int())) {
+      state->add_black_pawns(bit);
+  }
+  for (auto bit : IterateBits((board.their_knights()).as_int())) {
+      state->add_black_knights(bit);
+  }
+  for (auto bit : IterateBits((board.theirs() & board.bishops()).as_int())) {
+      state->add_black_bishops(bit);
+  }
+  for (auto bit : IterateBits((board.theirs() & board.rooks()).as_int())) {
+      state->add_black_rooks(bit);
+  }
+  for (auto bit : IterateBits((board.theirs() & board.queens()).as_int())) {
+      state->add_black_queens(bit);
+  }
+  for (auto bit : IterateBits((board.their_king()).as_int())) {
+      state->set_black_king(bit);
+  }
 
   int repetitions = position.GetRepetitions();
   if (repetitions > 1) {
