@@ -81,6 +81,10 @@ endif
 files += gen.process('libs/lczero-common/proto/net.proto',
   preserve_path_from : meson.current_source_dir() + '/libs/lczero-common/')
 
+flatc = find_program('flatc', required : false)
+includes += include_directories('subprojects/flatbuffers/include/flatbuffers')
+includes += include_directories('libs/lczero-common/flat')
+
 #############################################################################
 ## Main files
 #############################################################################

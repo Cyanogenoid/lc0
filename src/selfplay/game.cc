@@ -108,9 +108,8 @@ void SelfPlayGame::Play(int white_threads, int black_threads, bool training,
       // Append training data. The GameResult is later overwritten.
       auto best_q = best_eval.first;
       auto best_d = best_eval.second;
-      training_data_.push_back(tree_[idx]->GetCurrentHead()->GetV4TrainingData(
-          GameResult::UNDECIDED, tree_[idx]->GetPositionHistory(),
-          search_->GetParams().GetHistoryFill(), best_q, best_d));
+      training_data_.push_back(tree_[idx]->GetCurrentHead()->GetTrainingData(
+          builder_, tree_[idx]->GetPositionHistory(), best_q, best_d));
     }
 
     float eval = best_eval.first;
@@ -182,21 +181,19 @@ void SelfPlayGame::Abort() {
   if (search_) search_->Abort();
 }
 
-void SelfPlayGame::WriteTrainingData(TrainingDataWriter* writer) const {
+void SelfPlayGame::WriteTrainingData(TrainingDataWriter* writer) {
   assert(!training_data_.empty());
-  bool black_to_move =
-      tree_[0]->GetPositionHistory().Starting().IsBlackToMove();
-  for (auto chunk : training_data_) {
-    if (game_result_ == GameResult::WHITE_WON) {
-      chunk.result = black_to_move ? -1 : 1;
-    } else if (game_result_ == GameResult::BLACK_WON) {
-      chunk.result = black_to_move ? 1 : -1;
-    } else {
-      chunk.result = 0;
-    }
-    writer->WriteChunk(chunk);
-    black_to_move = !black_to_move;
+  flatlczero::Result winner;
+  if (game_result_ == GameResult::WHITE_WON) {
+      winner = flatlczero::Result::Result_White;
+  } else if (game_result_ == GameResult::BLACK_WON) {
+      winner = flatlczero::Result::Result_Black;
+  } else {
+      winner = flatlczero::Result::Result_Draw;
   }
+  auto game = flatlczero::CreateGameDirect(builder_, &training_data_, winner);
+  builder_.Finish(game);
+  writer->WriteChunk(builder_.GetBufferPointer(), builder_.GetSize());
 }
 
 }  // namespace lczero

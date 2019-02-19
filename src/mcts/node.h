@@ -38,6 +38,8 @@
 #include "neural/encoder.h"
 #include "neural/writer.h"
 #include "utils/mutex.h"
+#include "chunk_generated.h"
+#include "flatbuffers.h"
 
 namespace lczero {
 
@@ -205,10 +207,9 @@ class Node {
   // in depth parameter, and returns true if it was indeed updated.
   bool UpdateFullDepth(uint16_t* depth);
 
-  V4TrainingData GetV4TrainingData(GameResult result,
+  flatbuffers::Offset<flatlczero::State> GetTrainingData(flatbuffers::FlatBufferBuilder&,
                                    const PositionHistory& history,
-                                   FillEmptyHistory fill_empty_history,
-                                   float best_q, float best_d) const;
+                                   float best_q, float best_d);
 
   // Returns range for iterating over edges.
   ConstIterator Edges() const;

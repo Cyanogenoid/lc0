@@ -33,29 +33,6 @@
 
 namespace lczero {
 
-#pragma pack(push, 1)
-
-struct V4TrainingData {
-  uint32_t version;
-  float probabilities[1858];
-  uint64_t planes[104];
-  uint8_t castling_us_ooo;
-  uint8_t castling_us_oo;
-  uint8_t castling_them_ooo;
-  uint8_t castling_them_oo;
-  uint8_t side_to_move;
-  uint8_t rule50_count;
-  uint8_t move_count;
-  int8_t result;
-  float root_q;
-  float best_q;
-  float root_d;
-  float best_d;
-} PACKED_STRUCT;
-static_assert(sizeof(V4TrainingData) == 8292, "Wrong struct size");
-
-#pragma pack(pop)
-
 class TrainingDataWriter {
  public:
   // Creates a new file to write in data directory. It will has @game_id
@@ -67,7 +44,7 @@ class TrainingDataWriter {
   }
 
   // Writes a chunk.
-  void WriteChunk(const V4TrainingData& data);
+  void WriteChunk(uint8_t* data, int size);
 
   // Flushes file and closes it.
   void Finalize();

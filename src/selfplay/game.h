@@ -33,6 +33,8 @@
 #include "neural/cache.h"
 #include "neural/network.h"
 #include "utils/optionsparser.h"
+#include "flatbuffers.h"
+#include "chunk_generated.h"
 
 namespace lczero {
 
@@ -76,7 +78,7 @@ class SelfPlayGame {
   void Abort();
 
   // Writes training data to a file.
-  void WriteTrainingData(TrainingDataWriter* writer) const;
+  void WriteTrainingData(TrainingDataWriter* writer);
 
   GameResult GetGameResult() const { return game_result_; }
   std::vector<Move> GetMoves() const;
@@ -102,7 +104,8 @@ class SelfPlayGame {
   std::mutex mutex_;
 
   // Training data to send.
-  std::vector<V4TrainingData> training_data_;
+  std::vector<flatbuffers::Offset<flatlczero::State>> training_data_;
+  flatbuffers::FlatBufferBuilder builder_;
 };
 
 }  // namespace lczero

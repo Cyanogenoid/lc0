@@ -38,6 +38,8 @@
 #include "neural/network.h"
 #include "utils/exception.h"
 #include "utils/hashcat.h"
+#include "chunk_generated.h"
+#include "flatbuffers.h"
 
 namespace lczero {
 
@@ -292,73 +294,102 @@ void Node::ReleaseChildrenExceptOne(Node* node_to_save) {
   child_ = std::move(saved_node);
 }
 
-namespace {
-// Reverse bits in every byte of a number
-uint64_t ReverseBitsInBytes(uint64_t v) {
-  v = ((v >> 1) & 0x5555555555555555ull) | ((v & 0x5555555555555555ull) << 1);
-  v = ((v >> 2) & 0x3333333333333333ull) | ((v & 0x3333333333333333ull) << 2);
-  v = ((v >> 4) & 0x0F0F0F0F0F0F0F0Full) | ((v & 0x0F0F0F0F0F0F0F0Full) << 4);
-  return v;
-}
-}  // namespace
-
-V4TrainingData Node::GetV4TrainingData(GameResult game_result,
+flatbuffers::Offset<flatlczero::State> Node::GetTrainingData(flatbuffers::FlatBufferBuilder& builder,
                                        const PositionHistory& history,
-                                       FillEmptyHistory fill_empty_history,
-                                       float best_q, float best_d) const {
-  V4TrainingData result;
-
-  // Set version.
-  result.version = 4;
-
+                                       float best_q, float best_d) {
   // Populate probabilities.
   float total_n = static_cast<float>(GetChildrenVisits());
   // Prevent garbage/invalid training data from being uploaded to server.
   if (total_n <= 0.0f) throw Exception("Search generated invalid data!");
   // Set illegal moves to have -1 probability.
-  std::memset(result.probabilities, -1, sizeof(result.probabilities));
+  std::vector<uint16_t> move_index;
+  std::vector<float> probability;
   for (const auto& child : Edges()) {
-    result.probabilities[child.edge()->GetMove().as_nn_index()] =
-        child.GetN() / total_n;
+    move_index.emplace_back(child.edge()->GetMove().as_nn_index());
+    probability.emplace_back(child.GetN() / total_n);
   }
-
-  // Populate planes.
-  InputPlanes planes = EncodePositionForNN(history, 8, fill_empty_history);
-  int plane_idx = 0;
-  for (auto& plane : result.planes) {
-    plane = ReverseBitsInBytes(planes[plane_idx++].mask);
-  }
+  auto policy = flatlczero::CreatePolicyDirect(builder, &move_index, &probability);
 
   const auto& position = history.Last();
-  // Populate castlings.
-  result.castling_us_ooo = position.CanCastle(Position::WE_CAN_OOO) ? 1 : 0;
-  result.castling_us_oo = position.CanCastle(Position::WE_CAN_OO) ? 1 : 0;
-  result.castling_them_ooo = position.CanCastle(Position::THEY_CAN_OOO) ? 1 : 0;
-  result.castling_them_oo = position.CanCastle(Position::THEY_CAN_OO) ? 1 : 0;
+  // Always store board from white's perspective.
+  const auto& board = !position.IsBlackToMove() ? position.GetBoard() : position.GetThemBoard();
 
-  // Other params.
-  result.side_to_move = position.IsBlackToMove() ? 1 : 0;
-  result.move_count = 0;
-  result.rule50_count = position.GetNoCaptureNoPawnPly();
-
-  // Game result.
-  if (game_result == GameResult::WHITE_WON) {
-    result.result = position.IsBlackToMove() ? -1 : 1;
-  } else if (game_result == GameResult::BLACK_WON) {
-    result.result = position.IsBlackToMove() ? 1 : -1;
-  } else {
-    result.result = 0;
+  // Populate planes.
+  std::vector<uint8_t> piece_indices;
+  std::vector<uint8_t> piece_types;
+  for (auto bit : IterateBits((board.ours() & board.pawns()).as_int())) {
+      piece_indices.emplace_back(bit);
+      piece_types.emplace_back(flatlczero::PieceType::PieceType_Pawn);
   }
+  for (auto bit : IterateBits((board.our_knights()).as_int())) {
+      piece_indices.emplace_back(bit);
+      piece_types.emplace_back(flatlczero::PieceType::PieceType_Knight);
+  }
+  for (auto bit : IterateBits((board.ours() & board.bishops()).as_int())) {
+      piece_indices.emplace_back(bit);
+      piece_types.emplace_back(flatlczero::PieceType::PieceType_Bishop);
+  }
+  for (auto bit : IterateBits((board.ours() & board.rooks()).as_int())) {
+      piece_indices.emplace_back(bit);
+      piece_types.emplace_back(flatlczero::PieceType::PieceType_Rook);
+  }
+  for (auto bit : IterateBits((board.ours() & board.queens()).as_int())) {
+      piece_indices.emplace_back(bit);
+      piece_types.emplace_back(flatlczero::PieceType::PieceType_Queen);
+  }
+  for (auto bit : IterateBits((board.our_king()).as_int())) {
+      piece_indices.emplace_back(bit);
+      piece_types.emplace_back(flatlczero::PieceType::PieceType_King);
+  }
+  auto white_pieces = flatlczero::CreatePiecesDirect(builder, &piece_indices, &piece_types);
+  piece_indices.clear();
+  piece_types.clear();
+  for (auto bit : IterateBits((board.theirs() & board.pawns()).as_int())) {
+      piece_indices.emplace_back(bit);
+      piece_types.emplace_back(flatlczero::PieceType::PieceType_Pawn);
+  }
+  for (auto bit : IterateBits((board.their_knights()).as_int())) {
+      piece_indices.emplace_back(bit);
+      piece_types.emplace_back(flatlczero::PieceType::PieceType_Knight);
+  }
+  for (auto bit : IterateBits((board.theirs() & board.bishops()).as_int())) {
+      piece_indices.emplace_back(bit);
+      piece_types.emplace_back(flatlczero::PieceType::PieceType_Bishop);
+  }
+  for (auto bit : IterateBits((board.theirs() & board.rooks()).as_int())) {
+      piece_indices.emplace_back(bit);
+      piece_types.emplace_back(flatlczero::PieceType::PieceType_Rook);
+  }
+  for (auto bit : IterateBits((board.theirs() & board.queens()).as_int())) {
+      piece_indices.emplace_back(bit);
+      piece_types.emplace_back(flatlczero::PieceType::PieceType_Queen);
+  }
+  for (auto bit : IterateBits((board.their_king()).as_int())) {
+      piece_indices.emplace_back(bit);
+      piece_types.emplace_back(flatlczero::PieceType::PieceType_King);
+  }
+  auto black_pieces = flatlczero::CreatePiecesDirect(builder, &piece_indices, &piece_types);
+  flatlczero::PositionBuilder position_builder(builder);
+  position_builder.add_white(white_pieces);
+  position_builder.add_black(black_pieces);
+  position_builder.add_repetitions(position.GetRepetitions() > 1 ? 1 : 0);
+  position_builder.add_us_ooo(position.CanCastle(Position::WE_CAN_OOO));
+  position_builder.add_us_oo(position.CanCastle(Position::WE_CAN_OO));
+  position_builder.add_them_ooo(position.CanCastle(Position::THEY_CAN_OOO));
+  position_builder.add_them_oo(position.CanCastle(Position::THEY_CAN_OO));
+  position_builder.add_side_to_move(!position.IsBlackToMove() ? flatlczero::Side::Side_White : flatlczero::Side::Side_Black);
+  position_builder.add_rule_50(position.GetNoCaptureNoPawnPly());
+  auto game_position = position_builder.Finish();
 
-  // Aggregate evaluation Q.
-  result.root_q = -GetQ();
-  result.best_q = best_q;
+  flatlczero::EvaluationBuilder evaluation_builder(builder);
+  evaluation_builder.add_root_q(-GetQ());
+  evaluation_builder.add_best_q(best_q);
+  evaluation_builder.add_root_d(GetD());
+  evaluation_builder.add_best_d(best_d);
+  auto evaluation = evaluation_builder.Finish();
 
-  // Draw probability of WDL head.
-  result.root_d = GetD();
-  result.best_d = best_d;
-
-  return result;
+  auto state = flatlczero::CreateState(builder, game_position, policy, evaluation);
+  return state;
 }
 
 /////////////////////////////////////////////////////////////////////////
