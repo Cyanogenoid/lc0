@@ -437,6 +437,24 @@ if get_option('build_backends')
 
     has_backends = true
   endif  
+
+  ## ~~~~~~~
+  ## Pytorch
+  ## ~~~~~~~
+  torch_dir = join_paths([meson.current_source_dir(), 'libtorch'])
+  torch_lib_path = join_paths([torch_dir, 'lib'])
+
+  includes += include_directories('libtorch/include')
+
+  torch = cc.find_library('libtorch', dirs: torch_lib_path)
+  c10 = cc.find_library('libc10', dirs: torch_lib_path)
+  c10_cuda = cc.find_library('libc10_cuda', dirs: torch_lib_path)
+
+  deps += [torch, c10, c10_cuda]
+  pytorch_files = [
+    'src/neural/pytorch/network_pytorch.cc',
+  ]
+  files += pytorch_files
  
 
 endif # if get_option('build_backends')
