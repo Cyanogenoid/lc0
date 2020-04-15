@@ -98,25 +98,27 @@ class PytorchNetworkComputation : public NetworkComputation {
     auto elements = output.toTuple()->elements();
     policy_ = elements[0].toTensor().to(at::kCPU);
     value_ = elements[1].toTensor().to(at::kCPU);
+    policy_a_ = policy_.accessor<float, 2>();
+    value_a_ = value_.accessor<float, 2>();
   }
 
   int GetBatchSize() const override { return raw_input_.size(); }
 
   float GetQVal(int sample) const override {
-      auto w = value_[sample][0].template item<float>();
-      auto l = value_[sample][2].template item<float>();
+      auto w = (*value_a_)[sample][0];
+      auto l = (*value_a_)[sample][2];
       return w - l;
   }
 
   float GetDVal(int sample) const override {
-      return value_[sample][1].template item<float>();
+      return (*value_a_)[sample][1];
   }
 
       // TODO
   float GetMVal(int /* sample */) const override { return 0.0f; }
 
   float GetPVal(int sample, int move_id) const override {
-      return policy_[sample][move_id].template item<float>();
+      return (*policy_a_)[sample][move_id];
   }
 
  private:
@@ -127,6 +129,8 @@ class PytorchNetworkComputation : public NetworkComputation {
   torch::Tensor input_;
   torch::Tensor policy_;
   torch::Tensor value_;
+  std::optional<torch::TensorAccessor<float, 2>> policy_a_;
+  std::optional<torch::TensorAccessor<float, 2>> value_a_;
 };
 
 std::unique_ptr<NetworkComputation> PytorchNetwork::NewComputation() {
@@ -138,22 +142,28 @@ void PytorchNetworkComputation::PrepareInput() {
           {static_cast<int>(raw_input_.size()), 112, 8, 8});
   // float tensor with 4 dims
   auto input_a = input_.accessor<float, 4>();
-
+ 
+//  auto start_time = std::chrono::high_resolution_clock::now();
   int sample_num = 0;
   for (const auto& sample : raw_input_) {
     CHECK_EQ(sample.size(), 112);
     int dim = 0;
+    auto sample_a = input_a[sample_num];
     for (const auto& plane : sample) {
+      auto plane_a = sample_a[dim];
       for (auto bit : IterateBits(plane.mask)) {
         int r = bit / 8;
         int c = bit % 8;
-        input_a[sample_num][dim][r][c] = static_cast<float>(plane.value);
+        plane_a[r][c] = plane.value;
 //        std::cout << "writing " << sample_num << " " << dim << " (" << r << ", " << c << ") = " << plane.value << "\n";
       }
       dim++;
     }
     sample_num++;
   }
+ // auto end_time = std::chrono::high_resolution_clock::now();
+  //std::chrono::duration<double> diff = end_time - start_time;
+  //std::cout << "time: " << diff.count() << "s (" << GetBatchSize() << "), avg " << diff.count() / GetBatchSize() << " \n";
   input_ = input_.to(at::kCUDA);
 }
 
