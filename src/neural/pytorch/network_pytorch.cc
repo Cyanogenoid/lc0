@@ -58,7 +58,6 @@ class PytorchNetwork : public Network {
       std::cerr << "error loading the model\n";
     }
     module_.to(at::kCUDA);
-
   }
 
   std::unique_ptr<NetworkComputation> NewComputation() override;
@@ -94,24 +93,37 @@ class PytorchNetworkComputation : public NetworkComputation {
 
   void ComputeBlocking() override {
     PrepareInput();
+    auto start_time = std::chrono::high_resolution_clock::now();
     auto output = network_->Compute(input_);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> diff = end_time - start_time;
+//    std::cout << "time: " << diff.count() << "s (" << GetBatchSize() << "), avg " << diff.count() / GetBatchSize() << " \n";
     auto elements = output.toTuple()->elements();
     policy_ = elements[0].toTensor().to(at::kCPU);
-    value_ = elements[1].toTensor().to(at::kCPU);
+    value_z_ = elements[1].toTensor().to(at::kCPU);
+    value_q_ = elements[2].toTensor().to(at::kCPU);
     policy_a_ = policy_.accessor<float, 2>();
-    value_a_ = value_.accessor<float, 2>();
+    value_z_a_ = value_z_.accessor<float, 2>();
+    value_q_a_ = value_q_.accessor<float, 2>();
   }
 
   int GetBatchSize() const override { return raw_input_.size(); }
 
   float GetQVal(int sample) const override {
-      auto w = (*value_a_)[sample][0];
-      auto l = (*value_a_)[sample][2];
-      return w - l;
+      auto z_w = (*value_z_a_)[sample][0];
+      auto z_l = (*value_z_a_)[sample][2];
+      auto q_w = (*value_q_a_)[sample][0];
+      auto q_l = (*value_q_a_)[sample][2];
+
+      float q_ratio = 1;
+      return (1 - q_ratio) * (z_w - z_l) + q_ratio * (q_w - q_l);
   }
 
   float GetDVal(int sample) const override {
-      return (*value_a_)[sample][1];
+      auto z_d = (*value_z_a_)[sample][1];
+      auto q_d = (*value_q_a_)[sample][1];
+      float q_ratio = 1;
+      return (1 - q_ratio) * z_d + q_ratio * q_d;
   }
 
       // TODO
@@ -128,9 +140,11 @@ class PytorchNetworkComputation : public NetworkComputation {
   PytorchNetwork* network_;
   torch::Tensor input_;
   torch::Tensor policy_;
-  torch::Tensor value_;
+  torch::Tensor value_z_;
+  torch::Tensor value_q_;
   std::optional<torch::TensorAccessor<float, 2>> policy_a_;
-  std::optional<torch::TensorAccessor<float, 2>> value_a_;
+  std::optional<torch::TensorAccessor<float, 2>> value_z_a_;
+  std::optional<torch::TensorAccessor<float, 2>> value_q_a_;
 };
 
 std::unique_ptr<NetworkComputation> PytorchNetwork::NewComputation() {
