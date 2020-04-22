@@ -51,8 +51,10 @@ class PytorchNetwork : public Network {
                     "input_mode",
                     pblczero::NetworkFormat::INPUT_CLASSICAL_112_PLANE)),
             pblczero::NetworkFormat::MOVES_LEFT_NONE} {
+    std::string model_path = options.GetOrDefault<std::string>("model_path", "traced_model.pth");
+    q_ratio_ = options.GetOrDefault<float>("q_ratio", 0.5);
     try {
-      module_ = torch::jit::load("traced_model.pt");
+      module_ = torch::jit::load(model_path);
     }
     catch (const c10::Error& e) {
       std::cerr << "error loading the model\n";
@@ -70,6 +72,7 @@ class PytorchNetwork : public Network {
 
  private:
   torch::jit::script::Module module_;
+  float q_ratio_;
   NetworkCapabilities capabilities_{
       // TODO depend on network structure
       pblczero::NetworkFormat::INPUT_CLASSICAL_112_PLANE,
@@ -85,7 +88,7 @@ torch::IValue PytorchNetwork::Compute(torch::Tensor& input) {
 
 class PytorchNetworkComputation : public NetworkComputation {
  public:
-  PytorchNetworkComputation(PytorchNetwork* network): network_(network) {}
+  PytorchNetworkComputation(PytorchNetwork* network, float q_ratio): network_(network), q_ratio_(q_ratio) {}
 
   void AddInput(InputPlanes&& input) override {
     raw_input_.emplace_back(input);
@@ -115,15 +118,13 @@ class PytorchNetworkComputation : public NetworkComputation {
       auto q_w = (*value_q_a_)[sample][0];
       auto q_l = (*value_q_a_)[sample][2];
 
-      float q_ratio = 1;
-      return (1 - q_ratio) * (z_w - z_l) + q_ratio * (q_w - q_l);
+      return (1 - q_ratio_) * (z_w - z_l) + q_ratio_ * (q_w - q_l);
   }
 
   float GetDVal(int sample) const override {
       auto z_d = (*value_z_a_)[sample][1];
       auto q_d = (*value_q_a_)[sample][1];
-      float q_ratio = 1;
-      return (1 - q_ratio) * z_d + q_ratio * q_d;
+      return (1 - q_ratio_) * z_d + q_ratio_ * q_d;
   }
 
       // TODO
@@ -145,10 +146,11 @@ class PytorchNetworkComputation : public NetworkComputation {
   std::optional<torch::TensorAccessor<float, 2>> policy_a_;
   std::optional<torch::TensorAccessor<float, 2>> value_z_a_;
   std::optional<torch::TensorAccessor<float, 2>> value_q_a_;
+  float q_ratio_;
 };
 
 std::unique_ptr<NetworkComputation> PytorchNetwork::NewComputation() {
-    return std::make_unique<PytorchNetworkComputation>(this);
+    return std::make_unique<PytorchNetworkComputation>(this, q_ratio_);
   }
 
 void PytorchNetworkComputation::PrepareInput() {
